@@ -69,8 +69,6 @@ SCRIPT_PATH="$(dirname "$0")"
 
 ######################################################################
 
-Log "-->"
-
 usage() {
 	echo "Usage: $(basename $0) [-acdfFhlpPqsuU] [<long options>]"
 	echo ""
@@ -106,6 +104,8 @@ if ! source "${SCRIPT_PATH}/plexupdate-core"; then
 	echo "ERROR: plexupdate-core can't be found. Please redownload plexupdate and try again." >2
 	exit 1
 fi
+
+Log "-->"
 
 # Setup an exit handler so we cleanup
 cleanup() {
