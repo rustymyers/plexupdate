@@ -508,7 +508,7 @@ if [ "${AUTOINSTALL}" = "yes" ]; then
 		exit ${RET}
 	else
 		if [[ -n "$slackURL" ]]; then
-			slackMessage="payload={\"text\": \"Plex update ${FILENAME} (${AVAIL}) has been completed.\"}"
+			slackMessage="payload={\"text\": \"Plex update (${FILENAME}) has been completed.\"}"
 			curl -X POST --data-urlencode "$slackMessage" "${slackURL}"
 		fi
 	fi
