@@ -33,6 +33,10 @@ if [ -z "${BASH_VERSINFO}" ]; then
 	exit 255
 fi
 
+###############
+# Slack Notifications
+slackURL="https://hooks.slack.com/services/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"
+
 ##############################################################################
 # Don't change anything below this point, use a plexupdate.conf file
 # to override this section.
@@ -64,6 +68,8 @@ FILE_WGETLOG=$(mktemp /tmp/plexupdate.wget.XXXX)
 SCRIPT_PATH="$(dirname "$0")"
 
 ######################################################################
+
+Log "-->"
 
 usage() {
 	echo "Usage: $(basename $0) [-acdfFhlpPqsuU] [<long options>]"
@@ -486,9 +492,14 @@ if [ "${AUTOINSTALL}" = "yes" ]; then
 	${DISTRO_INSTALL} "${DOWNLOADDIR}/${FILENAME}"
 	RET=$?
 	if [ ${RET} -ne 0 ]; then
+		# Notify Slack we're here
+		curl -X POST --data-urlencode 'payload={"text": "Plex update command has failed!\n${DISTRO_INSTALL} "${DOWNLOADDIR}/${FILENAME} Error: ${RET}"}' "${slackURL}"
 		# Clarify why this failed, so user won't be left in the dark
 		error "Failed to install update. Command '${DISTRO_INSTALL} "${DOWNLOADDIR}/${FILENAME}"' returned error code ${RET}"
 		exit ${RET}
+	else
+		
+		curl -X POST --data-urlencode 'payload={"text": "Plex update ${FILENAME} (${AVAIL}) has been completed."}' "${slackURL}"
 	fi
 fi
 
@@ -522,4 +533,7 @@ if [ "${NOTIFY}" = "yes" ]; then
 	# Notify success if we downloaded and possibly installed the update
 	exit 10
 fi
+
+Log "<--"
+
 exit 0
