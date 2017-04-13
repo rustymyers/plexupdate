@@ -481,7 +481,7 @@ if [ ! -z "${PLEXSERVER}" -a "${AUTOINSTALL}" = "yes" ]; then
 	# Check if server is in-use before continuing (thanks @AltonV, @hakong and @sufr3ak)...
 	if running ${PLEXSERVER} ${TOKEN} ${PLEXPORT}; then
 		error "Server ${PLEXSERVER} is currently being used by one or more users, skipping installation. Please run again later"
-		if [[ -n "$slackMessage" ]]; then
+		if [[ -n "$slackURL" ]]; then
 			# Notify Slack we're here
 			slackMessage="payload={\"text\": \"Plex update (${FILENAME}) is blocked by one or more users.\"}"
 			curl -X POST --data-urlencode "$slackMessage" "${slackURL}"
@@ -498,7 +498,7 @@ if [ "${AUTOINSTALL}" = "yes" ]; then
 	${DISTRO_INSTALL} "${DOWNLOADDIR}/${FILENAME}"
 	RET=$?
 	if [ ${RET} -ne 0 ]; then
-		if [[ -n "$slackMessage" ]]; then
+		if [[ -n "$slackURL" ]]; then
 			# Notify Slack we're here
 			slackMessage="payload={\"text\": \"Plex update command has failed!\n${DISTRO_INSTALL} \n${DOWNLOADDIR}/${FILENAME} Error: ${RET}\"}"
 			curl -X POST --data-urlencode "$slackMessage" "${slackURL}"
@@ -507,7 +507,7 @@ if [ "${AUTOINSTALL}" = "yes" ]; then
 		error "Failed to install update. Command '${DISTRO_INSTALL} "${DOWNLOADDIR}/${FILENAME}"' returned error code ${RET}"
 		exit ${RET}
 	else
-		if [[ -n "$slackMessage" ]]; then
+		if [[ -n "$slackURL" ]]; then
 			slackMessage="payload={\"text\": \"Plex update ${FILENAME} (${AVAIL}) has been completed.\"}"
 			curl -X POST --data-urlencode "$slackMessage" "${slackURL}"
 		fi
