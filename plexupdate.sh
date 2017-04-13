@@ -479,7 +479,8 @@ if [ ! -z "${PLEXSERVER}" -a "${AUTOINSTALL}" = "yes" ]; then
 	if running ${PLEXSERVER} ${TOKEN} ${PLEXPORT}; then
 		error "Server ${PLEXSERVER} is currently being used by one or more users, skipping installation. Please run again later"
 		# Notify Slack we're here
-		curl -X POST --data-urlencode 'payload={"text": "Plex update ${FILENAME} is blocked by one or more users."}' "${slackURL}"
+		slackMessage="payload={\"text\": \"Plex update ${FILENAME} is blocked by one or more users.\"}"
+		curl -X POST --data-urlencode "$slackMessage" "${slackURL}"
 		exit 6
 	fi
 fi
