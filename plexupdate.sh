@@ -35,7 +35,6 @@ fi
 
 ###############
 # Slack Notifications
-slackURL="https://hooks.slack.com/services/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"
 
 ##############################################################################
 # Don't change anything below this point, use a plexupdate.conf file
@@ -92,6 +91,7 @@ usage() {
 	echo "    --config <path/to/config/file> Configuration file to use"
 	echo "    --dldir <path/to/download/dir> Download directory to use"
 	echo "    --help This help"
+	echo "    --slack <url for slack messagess> Send successes and errors to Slack"
 	echo "    --notify-success Set exit code 10 if update is available/installed"
 	echo "    --port <Plex server port> Port for Plex Server. Used with --server"
 	echo "    --server <Plex server address> Address of Plex Server"
@@ -113,7 +113,7 @@ trap cleanup EXIT
 
 # Parse commandline
 ALLARGS=( "$@" )
-optstring="-o acCdfFhlpPqrSsuUv -l config:,dldir:,email:,pass:,server:,port:,token:,notify-success,check-update,help"
+optstring="-o acCdfFhlpPqrSsuUv -l config:,dldir:,email:,slack:,pass:,server:,port:,token:,notify-success,check-update,help"
 GETOPTRES=$(getopt $optstring -- "$@")
 if [ $? -eq 1 ]; then
 	exit 1
@@ -168,6 +168,7 @@ do
 		(--config) shift;; #gobble up the paramater and silently continue parsing
 		(--dldir) shift; DOWNLOADDIR=$(trimQuotes ${1});;
 		(--email) shift; warn "EMAIL is deprecated. Use TOKEN instead."; EMAIL=$(trimQuotes ${1});;
+		(--slack) shift; slackURL=$(trimQuotes ${1});;
 		(--pass) shift; warn "PASS is deprecated. Use TOKEN instead."; PASS=$(trimQuotes ${1});;
 		(--server) shift; PLEXSERVER=$(trimQuotes ${1});;
 		(--port) shift; PLEXPORT=$(trimQuotes ${1});;
@@ -183,6 +184,8 @@ do
 	esac
 	shift
 done
+
+info "Slack url is: $slackURL"
 
 # Sanity, make sure wget is in our path...
 if ! hash wget 2>/dev/null; then
@@ -478,9 +481,11 @@ if [ ! -z "${PLEXSERVER}" -a "${AUTOINSTALL}" = "yes" ]; then
 	# Check if server is in-use before continuing (thanks @AltonV, @hakong and @sufr3ak)...
 	if running ${PLEXSERVER} ${TOKEN} ${PLEXPORT}; then
 		error "Server ${PLEXSERVER} is currently being used by one or more users, skipping installation. Please run again later"
-		# Notify Slack we're here
-		slackMessage="payload={\"text\": \"Plex update (${FILENAME}) is blocked by one or more users.\"}"
-		curl -X POST --data-urlencode "$slackMessage" "${slackURL}"
+		if [[ -n "$slackMessage" ]]; then
+			# Notify Slack we're here
+			slackMessage="payload={\"text\": \"Plex update (${FILENAME}) is blocked by one or more users.\"}"
+			curl -X POST --data-urlencode "$slackMessage" "${slackURL}"
+		fi
 		exit 6
 	fi
 fi
@@ -493,15 +498,19 @@ if [ "${AUTOINSTALL}" = "yes" ]; then
 	${DISTRO_INSTALL} "${DOWNLOADDIR}/${FILENAME}"
 	RET=$?
 	if [ ${RET} -ne 0 ]; then
-		# Notify Slack we're here
-		slackMessage="payload={\"text\": \"Plex update command has failed!\n${DISTRO_INSTALL} \n${DOWNLOADDIR}/${FILENAME} Error: ${RET}\"}"
-		curl -X POST --data-urlencode "$slackMessage" "${slackURL}"
+		if [[ -n "$slackMessage" ]]; then
+			# Notify Slack we're here
+			slackMessage="payload={\"text\": \"Plex update command has failed!\n${DISTRO_INSTALL} \n${DOWNLOADDIR}/${FILENAME} Error: ${RET}\"}"
+			curl -X POST --data-urlencode "$slackMessage" "${slackURL}"
+		fi
 		# Clarify why this failed, so user won't be left in the dark
 		error "Failed to install update. Command '${DISTRO_INSTALL} "${DOWNLOADDIR}/${FILENAME}"' returned error code ${RET}"
 		exit ${RET}
 	else
-		slackMessage="payload={\"text\": \"Plex update ${FILENAME} (${AVAIL}) has been completed.\"}"
-		curl -X POST --data-urlencode "$slackMessage" "${slackURL}"
+		if [[ -n "$slackMessage" ]]; then
+			slackMessage="payload={\"text\": \"Plex update ${FILENAME} (${AVAIL}) has been completed.\"}"
+			curl -X POST --data-urlencode "$slackMessage" "${slackURL}"
+		fi
 	fi
 fi
 
