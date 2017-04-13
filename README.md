@@ -1,6 +1,9 @@
 ![plexupdate.sh](http://i.imgur.com/ThY5Rvl.png "plexupdate")
 # plexupdate
 
+`rusty fork`
+This fork is to add slack notifications for updates, failure to updates, and other results of the script.
+
 Plex Update is a bash script which helps you keep Plex Media Server up to date on Linux.
 
 You can schedule updates to run daily and install Plex Pass beta releases if you have a Plex Pass membership.
