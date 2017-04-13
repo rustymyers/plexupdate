@@ -105,8 +105,6 @@ if ! source "${SCRIPT_PATH}/plexupdate-core"; then
 	exit 1
 fi
 
-Log "-->"
-
 # Setup an exit handler so we cleanup
 cleanup() {
 	rm "${FILE_SHA}" "${FILE_WGETLOG}" &> /dev/null
@@ -480,6 +478,8 @@ if [ ! -z "${PLEXSERVER}" -a "${AUTOINSTALL}" = "yes" ]; then
 	# Check if server is in-use before continuing (thanks @AltonV, @hakong and @sufr3ak)...
 	if running ${PLEXSERVER} ${TOKEN} ${PLEXPORT}; then
 		error "Server ${PLEXSERVER} is currently being used by one or more users, skipping installation. Please run again later"
+		# Notify Slack we're here
+		curl -X POST --data-urlencode 'payload={"text": "Plex update ${DISTRO_INSTALL} is blocked by one or more users."}' "${slackURL}"
 		exit 6
 	fi
 fi
