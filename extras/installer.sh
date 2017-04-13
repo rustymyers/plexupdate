@@ -173,6 +173,21 @@ configure_plexupdate() {
 	fi
 
 	echo
+	echo -n "Do you want to use slack for notifications? "
+	
+	if yesno "Y"; then
+		# If they already have a slackURL, leave it alone
+		if [ -z "$slackURL" ]; then
+			slackURL=
+		fi
+		read -e -p "Enter slack URL: " -i "$slackURL" slackURL
+	else
+		# don't forget to erase old settings if they changed their answer
+		slackURL=
+	fi
+	
+
+	echo
 	echo -n "Would you like to automatically install the latest release when it is downloaded? "
 
 	if yesno "$AUTOINSTALL"; then
