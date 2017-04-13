@@ -25,7 +25,7 @@ UPSTREAM_GIT_URL="https://raw.githubusercontent.com/${GIT_OWNER:-mrworf}/plexupd
 PLEXUPDATE_FILES="plexupdate.sh plexupdate-core extras/installer.sh extras/cronwrapper"
 
 # Log File
-logFile="./plexupdater.log"
+logFile="./plexupdate.log"
 
 ######## FUNCTIONS ########
 #### Token Management #####
