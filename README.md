@@ -14,7 +14,7 @@ This fork is to add slack notifications for updates, failure to updates, and oth
 In the old days, this used to be a bit of a chore. But no more!
 
 ```
-bash -c "$(export GIT_OWNER=rustymyers; wget -qO - https://raw.githubusercontent.com/rustymyers/plexupdate/master/extras/installer.sh)"
+export GIT_OWNER=rustymyers; bash -c "$(wget -qO - https://raw.githubusercontent.com/rustymyers/plexupdate/master/extras/installer.sh)"
 ```
 
 will automatically install the tool as well as any dependencies. This has been tested on Ubuntu, Fedora and CentOS but should, for the most part, work on any modern Linux distribution.
