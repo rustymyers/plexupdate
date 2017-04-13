@@ -33,9 +33,6 @@ if [ -z "${BASH_VERSINFO}" ]; then
 	exit 255
 fi
 
-###############
-# Slack Notifications
-
 ##############################################################################
 # Don't change anything below this point, use a plexupdate.conf file
 # to override this section.
@@ -61,6 +58,7 @@ WGETOPTIONS=""	# extra options for wget. Used for progress bar.
 CHECKUPDATE=yes
 NOTIFY=no
 CHECKONLY=no
+slackURL=
 
 FILE_SHA=$(mktemp /tmp/plexupdate.sha.XXXX)
 FILE_WGETLOG=$(mktemp /tmp/plexupdate.wget.XXXX)
@@ -544,7 +542,5 @@ if [ "${NOTIFY}" = "yes" ]; then
 	# Notify success if we downloaded and possibly installed the update
 	exit 10
 fi
-
-Log "<--"
 
 exit 0
