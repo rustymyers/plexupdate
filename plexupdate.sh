@@ -58,6 +58,7 @@ WGETOPTIONS=""	# extra options for wget. Used for progress bar.
 CHECKUPDATE=yes
 NOTIFY=no
 CHECKONLY=no
+SYSTEMDUNIT=plexmediaserver.service
 slackURL=
 
 FILE_SHA=$(mktemp /tmp/plexupdate.sha.XXXX)
@@ -72,8 +73,7 @@ usage() {
 	echo ""
 	echo "    -a Auto install if download was successful (requires root)"
 	echo "    -d Auto delete after auto install"
-	echo "    -f Force download even if it's the same version or file"
-	echo "       already exists unless checksum passes"
+	echo "    -f Force download/update even if the newest release is already installed"
 	echo "    -h This help"
 	echo "    -l List available builds and distros"
 	echo "    -p Public Plex Media Server version"
@@ -205,7 +205,7 @@ if [ "${CRON}" = "yes" ]; then
 fi
 
 if [ "${KEEP}" = "yes" ]; then
-	error "KEEP is deprecated and should be removed from config file"
+	error "KEEP is deprecated and must be removed from config file"
 	exit 255
 fi
 
@@ -215,7 +215,7 @@ if [ "${FORCEALL}" = "yes" ]; then
 fi
 
 if [ ! -z "${RELEASE}" ]; then
-	error "RELEASE keyword is deprecated and should be removed from config file"
+	error "RELEASE keyword is deprecated and must be removed from config file"
 	error "Use DISTRO and BUILD instead to manually select what to install (check README.md)"
 	exit 255
 fi
@@ -233,8 +233,13 @@ if [ "${AUTOUPDATE}" = "yes" ]; then
 	elif ! git diff --quiet; then
 		warn "You have made changes to the plexupdate files, cannot auto update"
 	else
+		if [ -z "${BRANCHNAME}" ]; then
+			BRANCHNAME="$(git symbolic-ref -q --short HEAD)"
+		elif [ "${BRANCHNAME}" != "$(git symbolic-ref -q --short HEAD)" ]; then
+			git checkout "${BRANCHNAME}"
+		fi
 		# Force FETCH_HEAD to point to the correct branch (for older versions of git which don't default to current branch)
-		if git fetch origin ${BRANCHNAME:-master} --quiet && ! git diff --quiet FETCH_HEAD; then
+		if git fetch origin ${BRANCHNAME} --quiet && ! git diff --quiet FETCH_HEAD; then
 			info "Auto-updating..."
 
 			# Use an associative array to store permissions. If you're running bash < 4, the declare will fail and we'll
@@ -339,13 +344,9 @@ if [ "${CHECKUPDATE}" = "yes" -a "${AUTOUPDATE}" = "no" ]; then
 	popd > /dev/null
 fi
 
-if [ "${PUBLIC}" = "no" -a -z "$TOKEN" ]; then
-	TO_SOURCE="$(dirname "$0")/extras/get-plex-token"
-	[ -f "$TO_SOURCE" ] && source $TO_SOURCE
-	if ! getPlexToken; then
-		error "Unable to get Plex token, falling back to public release"
-		PUBLIC="yes"
-	fi
+if [ "${PUBLIC}" = "no" ] && ! getPlexToken; then
+	error "Unable to get Plex token, falling back to public release"
+	PUBLIC="yes"
 fi
 
 if [ "$PUBLIC" != "no" ]; then
@@ -354,7 +355,13 @@ if [ "$PUBLIC" != "no" ]; then
 fi
 
 if [ "${LISTOPTS}" = "yes" ]; then
-	opts="$(wget "${URL_DOWNLOAD}" -O - 2>/dev/null | grep -oe '"label"[^}]*' | grep -v Download | sed 's/"label":"\([^"]*\)","build":"\([^"]*\)","distro":"\([^"]*\)".*/"\3" "\2" "\1"/' | uniq | sort)"
+	wgetresults="$(wget "${URL_DOWNLOAD}" -o "${FILE_WGETLOG}" -O -)"
+	if [ $? -ne 0 ]; then
+		error "Unable to retrieve available builds due to a wget error, run with -v for details"
+		[ "$VERBOSE" = "yes" ] && cat "${FILE_WGETLOG}"
+		exit 1
+	fi
+	opts="$(grep -oe '"label"[^}]*' <<<"${wgetresults}" | grep -v Download | sed 's/"label":"\([^"]*\)","build":"\([^"]*\)","distro":"\([^"]*\)".*/"\3" "\2" "\1"/' | uniq | sort)"
 	eval opts=( "DISTRO" "BUILD" "DESCRIPTION" "======" "=====" "==============================================" $opts )
 
 	BUILD=
@@ -378,18 +385,24 @@ fi
 info "Retrieving list of available distributions"
 
 # Set "X-Plex-Token" to the auth token, if no token is specified or it is invalid, the list will return public downloads by default
-RELEASE=$(wget --header "X-Plex-Token:"${TOKEN}"" "${URL_DOWNLOAD}" -O - 2>/dev/null | grep -ioe '"label"[^}]*' | grep -i "\"distro\":\"${DISTRO}\"" | grep -m1 -i "\"build\":\"${BUILD}\"")
+wgetresults="$(wget --header "X-Plex-Token:"${TOKEN}"" "${URL_DOWNLOAD}" -o "${FILE_WGETLOG}" -O -)"
+if [ $? -ne 0 ]; then
+	error "Unable to retrieve the URL needed for download due to a wget error, run with -v for details"
+	[ "$VERBOSE" = "yes" ] && cat "${FILE_WGETLOG}"
+	exit 1
+fi
+RELEASE=$(grep -ioe '"label"[^}]*' <<<"${wgetresults}" | grep -i "\"distro\":\"${DISTRO}\"" | grep -m1 -i "\"build\":\"${BUILD}\"")
 DOWNLOAD=$(echo ${RELEASE} | grep -m1 -ioe 'https://[^\"]*')
 CHECKSUM=$(echo ${RELEASE} | grep -ioe '\"checksum\"\:\"[^\"]*' | sed 's/\"checksum\"\:\"//')
 
-if [ "$VERBOSE" = "yes" ]; then
-	for i in RELEASE DOWNLOAD CHECKSUM; do
-		info "$i=${!i}"
-	done
-fi
+verboseOutput RELEASE DOWNLOAD CHECKSUM
 
 if [ -z "${DOWNLOAD}" ]; then
-	error "Unable to retrieve the URL needed for download (Query DISTRO: $DISTRO, BUILD: $BUILD)"
+	if [ "$DISTRO" = "ubuntu" -a "$BUILD" = "linux-ubuntu-armv7l" ]; then
+		error "Plex Media Server on Raspbian is not officially supported and script cannot download a working package."
+	else
+		error "Unable to retrieve the URL needed for download (Query DISTRO: $DISTRO, BUILD: $BUILD)"
+	fi
 	if [ ! -z "${RELEASE}" ]; then
 		error "It seems release info is missing a link"
 		error "Please try https://plex.tv and confirm it works there before reporting this issue"
@@ -416,35 +429,30 @@ fi
 # By default, try downloading
 SKIP_DOWNLOAD="no"
 
-# Installed version detection
-if [ "${REDHAT}" != "yes" ]; then
-	INSTALLED_VERSION=$(dpkg-query -s plexmediaserver 2>/dev/null | grep -Po 'Version: \K.*')
-else
-	if [ "${AUTOINSTALL}" = "yes" -a "${AUTOSTART}" = "no" ]; then
-		warn "Your distribution may require the use of the AUTOSTART [-s] option for the service to start after the upgrade completes."
-	fi
-	INSTALLED_VERSION=$(rpm -qv plexmediaserver 2>/dev/null)
+INSTALLED_VERSION="$(getPlexVersion)" || warn "Unable to detect installed version, first time?"
+FILE_VERSION="$(parseVersion "${FILENAME}")"
+verboseOutput INSTALLED_VERSION FILE_VERSION
+
+if [ "${REDHAT}" = "yes" -a "${AUTOINSTALL}" = "yes" -a "${AUTOSTART}" = "no" ]; then
+	warn "Your distribution may require the use of the AUTOSTART [-s] option for the service to start after the upgrade completes."
 fi
 
 if [ "${CHECKONLY}" = "yes" ]; then
-	if [ -z "${INSTALLED_VERSION}" ]; then
-		warn "Unable to detect installed version, first time?"
-	elif [[ $FILENAME != *$INSTALLED_VERSION* ]]; then
-		AVAIL="$(echo "${FILENAME}" | sed -nr 's/^[^0-9]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\-[^_]+).*/\1/pg')"
-		info "Your OS reports Plex $INSTALLED_VERSION installed, newer version is available (${AVAIL})"
+	if [ -n "${INSTALLED_VERSION}" ] && isNewerVersion "$FILE_VERSION" "$INSTALLED_VERSION"; then
+		info "Your OS reports Plex $INSTALLED_VERSION installed, newer version is available (${FILE_VERSION})"
 		exit 7
-	else
+	elif [ -n "${INSTALLED_VERSION}" ]; then
 		info "You are running the latest version of Plex (${INSTALLED_VERSION})"
 	fi
 	exit 0
 fi
 
-if [[ $FILENAME == *$INSTALLED_VERSION* ]] && [ "${FORCE}" != "yes" ] && [ ! -z "${INSTALLED_VERSION}" ]; then
+if ! isNewerVersion "$FILE_VERSION" "$INSTALLED_VERSION" && [ "${FORCE}" != "yes" ]; then
 	info "Your OS reports the latest version of Plex ($INSTALLED_VERSION) is already installed. Use -f to force download."
 	exit 0
 fi
 
-if [ -f "${DOWNLOADDIR}/${FILENAME}" -a "${FORCE}" != "yes" ]; then
+if [ -f "${DOWNLOADDIR}/${FILENAME}" ]; then
 	if sha1sum --status -c "${FILE_SHA}"; then
 		info "File already exists (${FILENAME}), won't download."
 		if [ "${AUTOINSTALL}" != "yes" ]; then
@@ -475,9 +483,9 @@ if ! sha1sum --status -c "${FILE_SHA}"; then
 	exit 4
 fi
 
-if [ ! -z "${PLEXSERVER}" -a "${AUTOINSTALL}" = "yes" ]; then
+if [ -n "${PLEXSERVER}" -a "${AUTOINSTALL}" = "yes" ]; then
 	# Check if server is in-use before continuing (thanks @AltonV, @hakong and @sufr3ak)...
-	if running ${PLEXSERVER} ${TOKEN} ${PLEXPORT}; then
+	if running "${PLEXSERVER}" "${PLEXPORT}"; then
 		error "Server ${PLEXSERVER} is currently being used by one or more users, skipping installation. Please run again later"
 		if [[ -n "$slackURL" ]]; then
 			# Notify Slack we're here
@@ -527,7 +535,7 @@ if [ "${AUTOSTART}" = "yes" ]; then
 	fi
 	# Check for systemd
 	if hash systemctl 2>/dev/null; then
-		systemctl start plexmediaserver.service
+		systemctl start "$SYSTEMDUNIT"
 	elif hash service 2>/dev/null; then
 		service plexmediaserver start
 	elif [ -x /etc/init.d/plexmediaserver ]; then
