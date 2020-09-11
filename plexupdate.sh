@@ -53,6 +53,9 @@ AUTODELETE=no
 AUTOUPDATE=no
 AUTOSTART=no
 ARCH=$(uname -m)
+# patch for Raspberry Pi reporting as armv7l, whereas Plex only offers armv7hf_neon
+[ "$ARCH" = "armv7l" ] && ARCH="armv7hf_neon"
+BUILD="linux-$ARCH"
 SHOWPROGRESS=no
 WGETOPTIONS=""	# extra options for wget. Used for progress bar.
 CHECKUPDATE=yes
@@ -235,12 +238,14 @@ if [ "${AUTOUPDATE}" = "yes" ]; then
 	else
 		if [ -z "${BRANCHNAME}" ]; then
 			BRANCHNAME="$(git symbolic-ref -q --short HEAD)"
-		elif [ "${BRANCHNAME}" != "$(git symbolic-ref -q --short HEAD)" ]; then
-			git checkout "${BRANCHNAME}"
 		fi
 		# Force FETCH_HEAD to point to the correct branch (for older versions of git which don't default to current branch)
 		if git fetch origin ${BRANCHNAME} --quiet && ! git diff --quiet FETCH_HEAD; then
 			info "Auto-updating..."
+
+			if [ "${BRANCHNAME}" != "$(git symbolic-ref -q --short HEAD)" ]; then
+				git checkout "${BRANCHNAME}"
+			fi
 
 			# Use an associative array to store permissions. If you're running bash < 4, the declare will fail and we'll
 			# just run in "dumb" mode without trying to restore permissions
@@ -301,15 +306,10 @@ if [ ! -d "${DOWNLOADDIR}" ]; then
 fi
 
 if [ -z "${DISTRO_INSTALL}" ]; then
-	if [ -z "${DISTRO}" -a -z "${BUILD}" ]; then
+	if [ -z "${DISTRO}" ]; then
 		# Detect if we're running on redhat instead of ubuntu
 		if [ -f /etc/redhat-release ]; then
 			REDHAT=yes
-			if [ "${PUBLIC}" = "yes" ]; then
-				BUILD="linux-ubuntu-${ARCH}"
-			else
-				BUILD="linux-${ARCH}"
-			fi
 			DISTRO="redhat"
 			if ! hash dnf 2>/dev/null; then
 				DISTRO_INSTALL="${REDHAT_INSTALL/dnf/yum}"
@@ -318,18 +318,9 @@ if [ -z "${DISTRO_INSTALL}" ]; then
 			fi
 		else
 			REDHAT=no
-			if [ "${PUBLIC}" = yes ]; then
-				BUILD="linux-ubuntu-${ARCH}"
-				DISTRO="ubuntu"
-			else
-				BUILD="linux-${ARCH}"
-				DISTRO="debian"
-			fi
+			DISTRO="debian"
 			DISTRO_INSTALL="${DEBIAN_INSTALL}"
 		fi
-	elif [ -z "${DISTRO}" -o -z "${BUILD}" ]; then
-		error "You must define both DISTRO and BUILD"
-		exit 255
 	fi
 else
 	if [ -z "${DISTRO}" -o -z "${BUILD}" ]; then
@@ -356,10 +347,6 @@ fi
 if [ "${PUBLIC}" = "no" ] && ! getPlexToken; then
 	error "Unable to get Plex token, falling back to public release"
 	PUBLIC="yes"
-	BUILD="linux-ubuntu-${ARCH}"
-	if [ "${REDHAT}" = "yes" ]; then
-		DISTRO="ubuntu"
-	fi
 fi
 
 if [ "$PUBLIC" != "no" ]; then
